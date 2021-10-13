@@ -1,0 +1,1264 @@
+Recommended Reading
+
+https://ftp.apple.asimov.net/images/games/collections/san_inc_prodos/raster%20blaster%2013k%20file%20PRODOS%20%28san%20inc%20crack%29.dsk
+
+A self-decompressing single file crack by qkumba that is significantly smaller
+than the actual memory image.  file. However, the decompression routine runs in
+text mode, and displays a cycling character on the top left. An excellent space
+saving crack but doesn't have the same boot experience as the original.
+
+https://archive.org/details/a2_Raster_Blaster_1981_BudgeCo
+
+A single file crack, of unknown origin.  There are numerous cracks like this
+one.  The game image is uncompressed. It's DOS 3.3 based and loads slowly
+without clearing the screen while loading. It follows a fairly typical pattern
+shared by other cracks of the time. As will become apparent later, the original
+Raster Blaster game image loads off disk into RAM at $4000.$A0FF. $4000.88FF is
+left where it is. $8900.$A0FF is broken into two sections and copied to lower
+memory. This single file crack is much the same. But loading something into
+$8900.$A0FF would overwrite DOS (loaded at 48k). Therefore the crack has the two
+blocks that will be relocated are loaded in below $4000 instead, and a prepends
+that with the bootstrap that moves the sections of code to the correct locations
+and jumps to the true game entry points. As a result, the binary loads from, and
+starts at, $2700.
+
+https://archive.org/details/computist-scan-40/page/n15/mode/2up
+
+Not an actual disk image, but a write up of a crack procedure in Computist #40.
+
+
+
+Lab Equipment
+
+A few odd quirks about how this crack was done which might be helpful in making
+sense of what is described later.
+
+I don't have an original physical Raster Blaster disk. But I do have a copy of
+one as a WOZ image made by 4am.
+
+https://archive.org/details/wozaday_Raster_Blaster
+
+I have Applewin running on Windows 10.  I do also have real Apple II hardware
+with FloppyEMU, but that is downstairs, and Applewin's built in debugger is
+handy. It's good that the debugger is handy. I tried the traditional technique
+of copying the Disk II boot ROM from $C600 to $9600 and modifying it to trace
+the boot. Raster Blaster has two sectors on track 0 numbered 0. One in 16-sector
+format, the other in 13-sector. Presumably this was to support both new and old
+drive cards. Applewin tries to detect 13-sector disks and will automatically
+swap the boot ROM.  When I try the traditional boot trace technique, 16-sector
+version of sector 0 can't locate and load the 13-sector version of sector 0.
+
+Still, the techniques used to crack Raster Blaster are much the same. Statically
+reverse engineer a block of code, find the next point to halt execution, capture
+the next block of code, rinse and repeat.  But at a couple of points I did take
+advantage being able to inspect the PC registers.
+
+https://github.com/AppleWin/AppleWin/releases
+
+Additional programs to create a cracked disk image of the game are assembled
+with ACME cross assembler.
+
+https://sourceforge.net/projects/acme-crossass/
+
+Files created in the host operating system are transferred to a virtual disk
+image using Ciderpress. This may either binary images saved from the Applewin
+debugger, or programs assembled by ACME.
+
+https://a2ciderpress.com/index.htm
+
+Host operating systems files to be added to a disk image have Ciderpress file
+preservation flags. When adding files with Ciderpress, used the file
+preservation flags and don't do any text conversion.
+
+
+
+A Worked Example
+
+My boot starts in a typical 16-sector fashion with drive 1 in slot 6. Sector 0
+loads into $0800.$08FF. I halt the boot at $C6F8 and can now inspect the loaded
+boot code.
+
+[enter the debugger and reboot the emulator]
+>G C6F8
+>BSAVE "BOOT00#060800",800:8FF
+
+First, let's verify the number of sectors loaded:
+
+; Only load this one sector
+0800- 01
+
+Nothing too unusual. So, let's see what it does.
+
+; Relocate the boot sector to the text buffer.
+0801-   A2 00       LDX   #$00
+0803-   BD 00 08    LDA   $0800,X
+0806-   9D 00 02    STA   $0200,X
+0809-   E8          INX   
+080A-   D0 F7       BNE   $0803
+080C-   4C 0F 02    JMP   $020F ; And jump to it
+
+By copying the boot code into the input buffer and continuing execution from
+there it will be harder to use the F8 ROM monitor to trace the boot. But not
+impossible. Space is left in the input buffer at $0200.$020E. Short monitor
+commands won't actually damage anything.
+
+We can move the code with the monitor and examine it in place.
+
+*20F<80F.8FFM
+
+Execution continues from $020F.
+
+; Construct a standard 5+3 nibble decode
+; table based at $0800, where we just were.
+020F-   A0 AB       LDY   #$AB
+0211-   98          TYA   
+0212-   85 3C       STA   $3C
+0214-   4A          LSR   
+0215-   05 3C       ORA   $3C
+0217-   C9 FF       CMP   #$FF
+0219-   D0 09       BNE   $0224
+021B-   C0 D5       CPY   #$D5
+021D-   F0 05       BEQ   $0224
+021F-   8A          TXA   
+0220-   99 00 08    STA   $0800,Y
+0223-   E8          INX   
+0224-   C8          INY   
+0225-   D0 EA       BNE   $0211
+; Read sector 0
+0227-   84 3D       STY   $3D
+; About to read into $0300
+0229-   84 26       STY   $26
+022B-   A9 03       LDA   #$03
+022D-   85 27       STA   $27
+; Load X with Slot*16
+022F-   A6 2B       LDX   $2B
+0231-   20 5D 02    JSR   $025D
+
+The subroutine at $025D will read a disk sector into memory but without post
+nibble processing.  The secondary buffer is loaded into $0800.$0899. The primary
+buffer is loaded into the 256 bytes starting at the destination memory address.
+
+; Flag that we're looking for an address
+; field.
+025D-   18          CLC   
+025E-   08          PHP   
+; Look for $D5 nibble
+025F-   BD 8C C0    LDA   $C08C,X
+0262-   10 FB       BPL   $025F
+0264-   49 D5       EOR   #$D5
+0266-   D0 F7       BNE   $025F
+; Look for $AA nibble
+0268-   BD 8C C0    LDA   $C08C,X
+026B-   10 FB       BPL   $0268
+026D-   C9 AA       CMP   #$AA
+026F-   D0 F3       BNE   $0264
+0271-   EA          NOP   
+; Look for a $B5 nibble
+0272-   BD 8C C0    LDA   $C08C,X
+0275-   10 FB       BPL   $0272
+0277-   C9 B5       CMP   #$B5
+; Found an address prologue.
+0279-   F0 09       BEQ   $0284 
+027B-   28          PLP   
+; Jump back to look for the next address
+; field if we're not looking for data.
+027C-   90 DF       BCC   $025D
+027E-   49 AD       EOR   #$AD
+; Found the data field 
+0280-   F0 1F       BEQ   $02A1
+; Jump back to search for next header field.
+0282-   D0 D9       BNE   $025D
+; Look for 3 4+4 encoded bytes.
+0284-   A0 03       LDY   #$03
+; Save to be used later as the a post-denibblise
+; loop counter.
+0286-   84 2A       STY   $2A
+0288-   BD 8C C0    LDA   $C08C,X
+028B-   10 FB       BPL   $0288
+028D-   2A          ROL   
+028E-   85 3C       STA   $3C
+0290-   BD 8C C0    LDA   $C08C,X
+0293-   10 FB       BPL   $0290
+0295-   25 3C       AND   $3C
+0297-   88          DEY   
+0298-   D0 EE       BNE   $0288
+029A-   28          PLP      ; Balance the push.
+029B-   C5 3D       CMP   $3D
+; Wrong sector, look for next header field.
+029D-   D0 BE       BNE   $025D
+; Found the right header, look for
+; the data field.
+029F-   B0 BD       BCS   $025E ; Branch always
+; Read secondary nibble buffer
+; into $0800.$0899
+02A1-   A0 9A       LDY   #$9A
+02A3-   84 3C       STY   $3C
+02A5-   BC 8C C0    LDY   $C08C,X
+02A8-   10 FB       BPL   $02A5
+02AA-   59 00 08    EOR   $0800,Y
+02AD-   A4 3C       LDY   $3C
+02AF-   88          DEY   
+02B0-   99 00 08    STA   $0800,Y
+02B3-   D0 EE       BNE   $02A3
+; Read primary nibble buffer into destination
+02B5-   84 3C       STY   $3C
+02B7-   BC 8C C0    LDY   $C08C,X
+02BA-   10 FB       BPL   $02B7
+02BC-   59 00 08    EOR   $0800,Y
+02BF-   A4 3C       LDY   $3C
+02C1-   91 26       STA   ($26),Y
+02C3-   C8          INY   
+02C4-   D0 EF       BNE   $02B5
+; Validate data checksum
+02C6-   BC 8C C0    LDY   $C08C,X
+02C9-   10 FB       BPL   $02C6
+02CB-   59 00 08    EOR   $0800,Y
+02CE-   D0 8D       BNE   $025D
+02D0-   60          RTS   
+
+Continuing from where we were called.
+
+0234-   20 D1 02    JSR   $02D1
+
+The subroutine at $02D1 will post process the primary and secondary nibble
+buffers, leaving the resulting bytes in the destination memory initially
+occupied by the primary nibble buffer.
+
+; Post nibble processing
+; Initialise Y to #$00.
+02D1-   A8          TAY   
+; $2A was initialised to #$03 earlier.
+; Used here as the loop count
+02D2-   A2 00       LDX   #$00
+02D4-   B9 00 08    LDA   $0800,Y
+02D7-   4A          LSR   
+02D8-   3E CC 03    ROL   $03CC,X
+02DB-   4A          LSR   
+02DC-   3E 99 03    ROL   $0399,X
+02DF-   85 3C       STA   $3C
+02E1-   B1 26       LDA   ($26),Y
+02E3-   0A          ASL   
+02E4-   0A          ASL   
+02E5-   0A          ASL   
+02E6-   05 3C       ORA   $3C
+02E8-   91 26       STA   ($26),Y
+02EA-   C8          INY   
+02EB-   E8          INX   
+02EC-   E0 33       CPX   #$33
+02EE-   D0 E4       BNE   $02D4
+02F0-   C6 2A       DEC   $2A
+02F2-   D0 DE       BNE   $02D2
+; Check that $0300 is #$99
+02F4-   CC 00 03    CPY   $0300
+02F7-   D0 03       BNE   $02FC
+02F9-   60          RTS   
+
+It's bad if the first byte isn't $99.
+
+; Signal an error.
+02FC-   4C 2D FF    JMP   $FF2D
+
+The ROM code will display a generic error message.
+
+Continuing from the subroutine call point.
+
+; Modify the code we just read.
+0237-   A9 A9       LDA   #$A9
+0239-   8D 1F 03    STA   $031F
+023C-   A9 02       LDA   #$02
+023E-   8D 20 03    STA   $0320
+
+That's interesting. We'll come back to this later.
+
+0241-   4C 01 03    JMP   $0301
+
+This is the next place to halt execution and see what we're about to face.
+
+[enter the debugger and reboot the emulator]
+>G 241
+>BSAVE "BOOT01#060300",300:3FF
+
+0301-   B9 00 08    LDA   $0800,Y
+0304-   4C A6 03    JMP   $03A6
+
+Given what happens next, the accumulator load at $0301 seems pointless. However
+it will make sense later when this code is modified and executed again.
+
+; Decrypt a monitor command buffer,
+; set I/O and screen and then execute
+; the monitor commands.
+03A6-   A9 00       LDA   #$00
+03A8-   8D 00 20    STA   $2000
+03AB-   A2 34       LDX   #$34
+03AD-   BD CA 03    LDA   $03CA,X
+03B0-   4D 05 03    EOR   $0305
+03B3-   9D 00 02    STA   $0200,X
+03B6-   CA          DEX   
+03B7-   10 F4       BPL   $
+; Set $02FF to #$A0. Doesn't do anything straight away. The purpose
+; of this becomes obvious later when we continue execution from there.
+03B9-   A9 A0       LDA   #$A0
+03BB-   8D FF 02    STA   $02FF
+03BE-   20 58 FC    JSR   $FC58 ; HOME
+03C1-   20 89 FE    JSR   $FE89 ; SETKBD
+03C4-   20 93 FE    JSR   $FE93 ; SETVID
+03C7-   4C 70 FF    JMP   $FF70 ; Execute monitor commands
+
+The bytes stored at $03CA.$03FE are:
+
+03CA- 15 67 10 1A 15 67
+03D0- 13 08 15 60 62 6B 15 16
+03D8- 12 1C 67 06 67 06 67 06
+03E0- 68 14 16 16 17 1A 14 16
+03E8- 16 16 08 15 60 60 63 6B
+03F0- 65 16 13 11 06 65 16 13
+03F8- 16 06 14 60 60 61 2B
+
+Decoded in to input buffer, inserting clarifying whitespace, and annotating with
+comments, this is
+
+3A6<3A5.3FDM         ; Zero the code that set up the buffer
+304:A A A            ; Replace JMP with 3 * ASL
+N                    ; Normal text
+2001<2000.3FFEM      ; Clear hi-res screen 1
+C057                 ; Hi-res screen
+C050                 ; Text off (graphics on)
+2FFG                 ; Continue bootloader execution.
+
+To understand the first command, a common monitor idiom, it helps to know that.
+
+03A5- 00
+
+Time to have another look at $02FF.
+
+[enter the debugger and reboot the emulator]
+>G 2FF
+>BSAVE "BOOT02#0602FF",2FF:3FF
+
+; Pre-shift the nibble read translate table.
+02FF-   A0 99       LDY   #$99
+0301-   B9 00 08    LDA   $0800,Y
+0304-   0A          ASL   
+0305-   0A          ASL   
+0306-   0A          ASL   
+0307-   99 00 08    STA   $0800,Y
+030A-   C8          INY   
+030B-   D0 F4       BNE   $0301
+
+The code looks like this now for a number of reasons:
+ - $A0 is stored at $02FF by code at $03BB.
+ - $99 is loaded off disk. This is checked at $02F4.
+ - The monitor commands overwrite a jump with three ASL instructions.
+
+ Continuing on.
+
+; We're about to read 3 sectors (0-2) into
+; $0400-$0600, but with a different post
+; denibbleise scheme.
+030D-   A6 2B       LDX   $2B     ; Slot*16
+030F-   A9 09       LDA   #$09
+0311-   85 27       STA   $27     ; Use page $09 as a primary nibble buffer
+0313-   4A          LSR   
+0314-   84 3D       STY   $3D     ; Start with sector 0
+0316-   84 40       STY   $40
+0318-   85 41       STA   $41     ; Destination ($40) = $0400
+031A-   8A          TXA   
+031B-   4A          LSR   
+031C-   4A          LSR   
+031D-   4A          LSR   
+031E-   4A          LSR   
+; Set up vector to disk sector nibble read
+; routine at $025D.
+031F-   A9 02       LDA   #$02
+0321-   85 3F       STA   $3F
+0323-   A9 5D       LDA   #$5D
+0325-   85 3E       STA   $3E
+
+That TXA and the four LSR instructions are interesting. Given the LDA at $031F,
+they look completely pointless and a waste of space. Actually, they are bit of
+misdirection.  To understand how, we need to step back a moment.
+
+Earlier, at $0237, there was some code that modified the two bytes at $031F.  To
+understand the subterfuge being attempted we need to see what code would have
+looked like without the patch.
+
+030D-   A6 2B       LDX   $2B     ; Slot*16
+030F-   A9 09       LDA   #$09
+0311-   85 27       STA   $27     ; Use page $09 as a primary nibble buffer
+0313-   4A          LSR   
+0314-   84 3D       STY   $3D     ; Start with sector 0
+0316-   84 40       STY   $40
+0318-   85 41       STA   $41     ; Destination ($40) = $0400
+031A-   8A          TXA   
+031B-   4A          LSR   
+031C-   4A          LSR   
+031D-   4A          LSR   
+031E-   4A          LSR   
+031F-   09 C0       ORA   #$C0
+0321-   85 3F       STA   $3F
+0323-   A9 5D       LDA   #$5D
+0325-   85 3E       STA   $3E
+
+That's now a completely typical bit of code to build a jump vector to the
+subroutine in the disk controller ROM to read a sector. With the ORA #$C0
+instruction instead of the the LDA #$02 instruction, this results in storing
+$C65D at ($3E) assuming the boot slot is 6. DOS 3.3 works exactly like this.
+However, doing that here will fail for this disk. The correct routine that we
+need to call is at the same offset, but in a completely different page somewhere
+in RAM. Patching in the LDA #$02 means that the routine that will be jumped to
+is $025D, which was loaded in earlier.
+
+Ignoring the bit of misdirection and continuing.
+
+0327-   20 43 03    JSR   $0343   ; Read sector
+032A-   20 46 03    JSR   $0346   ; Denibbleise
+032D-   A5 3D       LDA   $3D
+032F-   4D FF 03    EOR   $03FF   ; Sector $02 been read?
+0332-   F0 06       BEQ   $033A
+0334-   E6 41       INC   $41
+0336-   E6 3D       INC   $3D
+0338-   D0 ED       BNE   $0327
+
+To properly understand this, there are a few other things that need to be known.
+
+The instruction at $0343 is
+
+0343-   6C 3E 00    JMP   ($003E)
+
+This means that the JSR at $0327 is effectively being vectored through the
+address loaded into ($3E), which is the routine at $025D that reads 5+3 nibbles
+from disk, but doesn't post nibble process them. For that, we'll use a different
+routine to the one used earlier. The post nibble process routine at $0346 will
+work with the shifted version of the nibble table that we created at $02FF. I
+haven't checked to see if this a different 5+3 encoding scheme that has a
+different algorithm for combining the primary and secondary nibble buffers.
+However, it's worth noting that the primary nibble buffer is always $0900, and
+the destination memory starts at $0400.
+
+The value at $03FF is loaded from disk and used as a constant. It is:
+
+03FF- 02
+
+We're going to load in sectors 0-2 into RAM starting at $0400. Of course, sector
+0 is a sector we read earlier and was in a slightly different encoding scheme.
+So now what's loaded at $0400.$04FF will be random garbage, but we're going to
+ignore it.
+
+Let's digress for a moment, and have a look at the new post nibble processing
+routine that is being called from $032A.  Other than putting in some extra blank
+lines that I think highlight important blocks, I've not analysed it.  I just
+wanted to see what came next.
+
+; Post nibble processing - something different with shifted table
+0346-   A2 32       LDX   #$32
+0348-   A0 00       LDY   #$00
+
+034A-   BD 00 08    LDA   $0800,X
+034D-   4A          LSR   
+034E-   4A          LSR   
+034F-   4A          LSR   
+0350-   85 3C       STA   $3C
+0352-   4A          LSR   
+0353-   85 2A       STA   $2A
+0355-   4A          LSR   
+0356-   1D 00 09    ORA   $0900,X
+0359-   91 40       STA   ($40),Y
+035B-   C8          INY   
+
+035C-   BD 33 08    LDA   $0833,X
+035F-   4A          LSR   
+0360-   4A          LSR   
+0361-   4A          LSR   
+0362-   4A          LSR   
+0363-   26 3C       ROL   $3C
+0365-   4A          LSR   
+0366-   26 2A       ROL   $2A
+0368-   1D 33 09    ORA   $0933,X
+036B-   91 40       STA   ($40),Y
+036D-   C8          INY   
+
+036E-   BD 66 08    LDA   $0866,X
+0371-   4A          LSR   
+0372-   4A          LSR   
+0373-   4A          LSR   
+0374-   4A          LSR   
+0375-   26 3C       ROL   $3C
+0377-   4A          LSR   
+0378-   26 2A       ROL   $2A
+037A-   1D 66 09    ORA   $0966,X
+037D-   91 40       STA   ($40),Y
+037F-   C8          INY   
+
+0380-   A5 2A       LDA   $2A
+0382-   29 07       AND   #$07
+0384-   1D 99 09    ORA   $0999,X
+0387-   91 40       STA   ($40),Y
+0389-   C8          INY   
+
+038A-   A5 3C       LDA   $3C
+038C-   29 07       AND   #$07
+038E-   1D CC 09    ORA   $09CC,X
+0391-   91 40       STA   ($40),Y
+0393-   C8          INY   
+
+0394-   CA          DEX   
+0395-   10 B3       BPL   $034A
+
+0397-   AD 99 08    LDA   $0899
+039A-   4A          LSR   
+039B-   4A          LSR   
+039C-   4A          LSR   
+039D-   0D FF 09    ORA   $09FF
+03A0-   91 40       STA   ($40),Y
+
+03A2-   A6 2B       LDX   $2B
+03A4-   60          RTS   
+
+Continuing on from the loop that reads three pages into $0400.$06FF.
+
+; Set Jump vector to $0501
+033A-   A8          TAY   
+033B-   C8          INY   
+033C-   84 3E       STY   $3E
+033E-   A9 05       LDA   #$05
+0340-   85 3F       STA   $3F
+0342-   38          SEC   
+; Fall through to the jump vector previously used by
+; a JSR instruction.
+0343-   6C 3E 00    JMP   ($003E)
+
+This is an obvious place to interrupt the execution so that we can capture and
+inspect what happens from $0501 onwards.
+
+[enter the debugger and reboot the emulator]
+>G 342
+>BSAVE "BOOT03#060400",400:6FF
+
+The next section of code is a decryption routine. It's hard to follow. Other
+than that it is originally keyed from the values stored into $3E and $3F and
+seems to generate a key sequence used in an SBC operation, is that it decrypts
+from $054E onwards and exits to $054E.
+
+; On entry: Y=$01, A=$05, X=Slot*16, C=1
+; Point ($50) to $054D
+0501-   A2 4D       LDX   #$4D
+0503-   86 50       STX   $50
+0505-   A2 05       LDX   #$05
+0507-   86 51       STX   $51
+
+0509-   08          PHP   
+050A-   C0 80       CPY   #$80
+050C-   90 07       BCC   $0515     ; <  #$80?
+050E-   B0 26       BCS   $0536     ; >= #$80?
+
+0510-   28          PLP   
+0511-   B0 0C       BCS   $051F
+0513-   90 12       BCC   $0527
+
+0515-   AA          TAX   
+0516-   98          TYA   
+0517-   48          PHA   
+0518-   0A          ASL   
+0519-   48          PHA   
+051A-   A8          TAY   
+051B-   8A          TXA   
+051C-   38          SEC   
+051D-   B0 EA       BCS   $0509     ; Branch always
+
+051F-   AA          TAX   
+0520-   68          PLA   
+0521-   A8          TAY   
+0522-   C8          INY   
+0523-   8A          TXA   
+0524-   18          CLC   
+0505-   90 E2       BCC   $0509     ; Branch always
+
+0527-   AA          TAX   
+0528-   68          PLA   
+0529-   A8          TAY   
+052A-   8A          TXA   
+052B-   90 09       BCC   $0536
+
+052D-   C0 01       CPY   #$01
+; This is where we break out of the decryption routine
+; and execute the code.
+052F-   F0 1D       BEQ   $054E
+0531-   28          PLP   
+0532-   B0 EB       BCS   $051F
+0534-   90 F1       BCC   $0527
+
+0536-   08          PHP   
+0537-   85 3F       STA   $3F
+0539-   A5 3E       LDA   $3E
+053B-   48          PHA   
+053C-   28          PLP   
+053D-   B1 50       LDA   ($50),Y
+053F-   AA          TAX   
+0540-   E5 3F       SBC   $3F
+0542-   91 50       STA   ($50),Y
+0544-   08          PHP   
+0545-   68          PLA   
+0546-   85 3E       STA   $3E
+0548-   8A          TXA   
+0549-   28          PLP   
+054A-   B0 C4       BCS   $0510
+054C-   90 DF       BCC   $052D
+
+The loop breaks out at $052F and continues onwards from $054E at the code that
+has just been decrypted.
+
+[enter the debugger and reboot the emulator]
+>G 54E
+>BSAVE "BOOT04#06054E",54E:6FF
+
+
+The code that is about to be executed is the main game loader. The game is
+stored on a number of tracks.  Each track after track 0 has a single block of
+$801 bytes encoded as nibbles in 4+4 encoding. There is no address field. The
+data field has a prologue of [$AD $DE], and the single nibble [$DF] as an
+epilogue.
+
+After decoding the 4+4 nibbles into bytes, the bytes will need to be to
+decrypted. The first $800 bytes of each track are decrypted to game code and
+data. The last byte is a checksum to validate that the track read is good.
+
+Each track's $800 bytes of game code and data are loaded into memory in blocks
+from $4000 one after the other. The first track is loaded in at $4000, the
+second at $4800, the third at $5000, and so on.
+
+While the code and data are loaded into memory in blocks from $4000 to higher
+memory, there is no particular sequence to the tracks that memory blocks are
+loaded from. As each memory block is read in, a table of stepper phases is
+consulted to find the track or half track to seek to.
+
+The seek code can seek backwards as well as forwards, but the phase seek table
+for Raster Blaster only seeks forward.
+
+054E-   28          PLP   
+; The value pulled next of stack is the
+; value $84, which is stored as a
+; constant for latter use.
+054F-   68          PLA   
+0550-   85 48       STA   $48
+; Reset stack
+0552-   A2 FF       LDX   #$FF
+0554-   9A          TXS   
+0555-   A6 2B       LDX   $2B       ; X=Slot*16
+; Initialise some variables
+0557-   A9 00       LDA   #$00
+0559-   85 52       STA   $52       ; Index into seek phase table at $061E
+055B-   85 53       STA   $53       ; Current track phase.
+; Initialise ($50) to point to $4000, the initial memory to load in to.
+055D-   85 50       STA   $50
+055F-   A9 40       LDA   #$40
+0561-   85 51       STA   $51
+; Get the next entry from the phase table and call the seek routine.
+0563-   A4 52       LDY   $52
+0565-   B9 1E 06    LDA   $061E,Y
+0568-   20 2C 06    JSR   $062C
+
+The phase table is a 0-terminated array of bytes. Each entry is the stepper
+phase to read the next block of bytes from, xor with $84.
+
+061E- 87 83
+0620- 8E 88 8B 96 90 93 9E 98
+0628- 9B A6 A0 00
+
+This equates to the following stepper phases:
+; 03 07
+; 0a 0c 0f 12 14 17 1a 1c
+; 1f 22 24
+
+Before carrying on with the track reading routine, we'll look at the track seek
+routine at $062C.
+
+; Decrypt target stepper phase.
+062C-   45 48       EOR   $48
+; Store it as the destination
+062E-   85 54       STA   $54
+; Exit if already stepped to target phase.
+0630-   C5 53       CMP   $53
+0632-   F0 4F       BEQ   $0683
+; Initialise the count of phases traversed.
+0634-   A9 00       LDA   #$00
+0636-   85 55       STA   $55
+; Loop start. Save the origin phase for this loop.
+0638-   A5 53       LDA   $53
+063A-   85 59       STA   $59
+063C-   38          SEC   
+063D-   E5 54       SBC   $54
+; Exit when subroutine destination phase reached.
+063F-   F0 31       BEQ   $0672
+0641-   B0 06       BCS   $0649
+; Going forwards.
+0643-   49 FF       EOR   #$FF
+0645-   E6 53       INC   $53
+0647-   90 04       BCC   $064D     ; Branch always.
+; Going backwards.
+0649-   69 FE       ADC   #$FE
+064B-   C6 53       DEC   $53
+; And ... ? Calculate momentum delay?
+064D-   C5 55       CMP   $55
+064F-   90 02       BCC   $0653
+0651-   A5 55       LDA   $55
+0653-   C9 08       CMP   #$08
+0655-   B0 01       BCS   $0658
+0657-   A8          TAY   
+; Turn on next phase
+0658-   38          SEC   
+0659-   20 76 06    JSR   $0676
+065C-   B9 95 06    LDA   $0695,Y
+065F-   20 84 06    JSR   $0684
+; Turn off last phase
+0662-   A5 59       LDA   $59
+0664-   18          CLC   
+0665-   20 78 06    JSR   $0678
+0668-   B9 9D 06    LDA   $069D,Y
+066B-   20 84 06    JSR   $0684
+; Increase momentum
+066E-   E6 55       INC   $55
+0670-   D0 C6       BNE   $0638     ; Branch always
+; Destination phase reached. Delay and
+; fall through to stepper phase routine
+; which will return from the seek routine.
+0672-   20 84 06    JSR   $0684
+0675-   18          CLC   
+0676-   A5 53       LDA   $53
+; Step arm: phase lower 2 bits of A.
+; C=0 is phase off, C=1 is phase on.
+0678-   29 03       AND   #$03
+067A-   2A          ROL   
+067B-   05 2B       ORA   $2B
+067D-   AA          TAX   
+067E-   BD 80 C0    LDA   $C080,X
+0681-   A6 2B       LDX   $2B
+0683-   60          RTS   
+
+Because the stepper arm is a physical device and has inertia, every time it is
+stepped, the computer has to wait while it moves. The more phases that the arm
+has moved across, the faster it is moving and the shorter the delay has to be
+between phase steps. The delay routine at $0684 uses the value in the
+accumulator to determine the length of the delay. It's called from $065F and
+$066B. Before the call is made, a value is read from one of the two tables at
+$0695 or $069D.
+
+; Table referenced at $065C
+0695- 01 30 28
+0698- 24 20 1E 1D 1C
+
+; Table referenced $0668
+069D- 70 2C 26
+06A0- 22 1F 1E 1D 1C
+
+; Delay routine for arm seek
+0684-   A2 11       LDX   #$11
+0686-   CA          DEX   
+0687-   D0 FD       BNE   $0686
+0689-   E6 56       INC   $56
+068B-   D0 02       BNE   $068F
+068D-   E6 57       INC   $57
+068F-   38          SEC   
+0690-   E9 01       SBC   #$01
+0692-   D0 F0       BNE   $0684
+0694-   60          RTS   
+
+After the stepper arm has seeks to the correct phase, read the data from the
+track. Each track has $800 data bytes plus 1 check byte. However, the read code
+does not count the number of bytes read; it looks for the nibble $DF which is
+the data prologue.
+
+; Look for $AD nibble
+056B-   BD 8C C0    LDA   $C08C,X
+056E-   10 FB       BPL   $056B
+0570-   C9 AD       CMP   #$AD
+0572-   D0 F7       BNE   $056B
+; Look for $DE nibble
+0574-   BD 8C C0    LDA   $C08C,X
+0577-   10 FB       BPL   $0574
+0579-   C9 DE       CMP   #$DE
+057B-   D0 F3       BNE   $0570
+; Remember the first page for this track load
+057D-   A5 51       LDA   $51
+057F-   48          PHA   
+; Start loading at the start of the page
+0580-   A0 00       LDY   #$00
+; Load the first half of a 4+4 encoded byte
+0582-   BD 8C C0    LDA   $C08C,X
+0585-   10 FB       BPL   $0582
+; End marker? Jump to post processing
+0587-   C9 DF       CMP   #$DF
+0589-   F0 19       BEQ   $05A4
+; Shift and save
+058B-   38          SEC   
+058C-   2A          ROL   
+058D-   85 5B       STA   $5B
+; Read the second half of the 4+4 encoded byte
+058F-   BD 8C C0    LDA   $C08C,X
+0592-   10 FB       BPL   $058F
+; Combine and store
+0594-   25 5B       AND   $5B
+0596-   91 50       STA   ($50),Y
+0598-   C8          INY   
+0599-   D0 E7       BNE   $0582
+; Read an entire page, move on to the next
+059B-   BD 8C C0    LDA   $C08C,X
+059E-   10 FB       BPL   $059B
+05A0-   E6 51       INC   $51
+05A2-   D0 E3       BNE   $0587     ; Branch always
+
+Once the track has been read into memory, it still needs to be decrypted. The
+checksum, to verify that the read is good, is built into the decryption routine.
+
+The decryption routine is a feedback stream cipher. Sort of a variation between
+cipher block chaining and cipher feedback mode, where the block size is 1 byte.
+
+The algorithm is:
+; F_0 = $FF
+; P_n = C_n ^ F_n
+; F_n+1 = C_n ^ $84
+
+The constant $84 is the value that was popped into $48 at $054F.
+
+; Save the end final page and reset the pointer
+; to the start of the track read
+05A4-   A5 51       LDA   $51
+05A6-   85 5B       STA   $5B
+05A8-   68          PLA   
+05A9-   85 51       STA   $51
+; F_0 = $FF
+05AB-   A0 FF       LDY   #$FF
+05AD-   84 58       STY   $58
+; Initialise the page index to $00.
+05AF-   C8          INY   
+; Decrypt the track just read
+05B0-   B1 50       LDA   ($50),Y
+05B2-   48          PHA   
+; P_n = C_n ^ F_n
+05B3-   45 58       EOR   $58
+05B5-   85 58       STA   $58
+; F_n+1 = C_n ^ $84
+05B7-   68          PLA   
+05B8-   45 48       EOR   $48
+05BA-   91 50       STA   ($50),Y
+; Next byte.
+05BC-   C8          INY   
+05BD-   D0 F1       BNE   $05B0
+05BF-   E6 51       INC   $51
+05C1-   A5 51       LDA   $51
+05C3-   C5 5B       CMP   $5B
+05C5-   90 E9       BCC   $05B0
+; Finished decryption.
+; Checksum bad? Jump back to re-read track
+05C7-   A5 58       LDA   $58
+05C9-   D1 50       CMP   ($50),Y
+05CB-   D0 9E       BNE   $056B
+; Jump back to read the next track.
+05CD-   E6 52       INC   $52
+05CF-   A4 52       LDY   $52
+05D1-   B9 1E 06    LDA   $061E,Y
+05D4-   D0 92       BNE   $0568
+; If the value read from the phase table at
+; $061E is $00, fall through to finish the
+; read into memory from disk.
+
+; Turn motor off.
+05D6-   BD 88 C0    LDA   $C088,X
+; Setting up half of the indirect jump
+; to game start. See $0616 for the other
+; half.
+05D9-   A0 00       LDY   #$00
+05DB-   84 3A       STY   $3A
+
+At this point the game has fully loaded from disk. The loader has read in 13
+tracks from disk into memory from $4000 to $A7FF. However, the last track is
+only partially used. As we'll see from the relocation code, only the memory from
+$4000 to $A0FF actually has game code and data.
+
+Raster Blaster is a single load game. After reading from disk and starting, the
+disk is never used again.
+
+However, the game is not loaded directly into the memory locations that it
+assembled to execute in. Before starting the game the loader has to relocate two
+sections. The relocation routine that is about to be executed will relocate the
+game as follows:
+
+ Load     Relocate
++-------+
+| $4000 |
+|   .   |
+|   .   |
+|   .   |
+| $88FF |
++-------+ +-------+
+| $8900 | | $0200 |
+|   .   | |   .   |
+| $8AFF | | $03FF |
++-------+ +-------+
+| $8B00 | | $0A00 |
+|   .   | |   .   |
+| $A0FF | | $1FFF |
++-------+ +-------+
+
+First we're going to relocate from $8900.$8AFF to $0200.$03FF.
+
+05DD-   B9 00 89    LDA   $8900,Y
+05E0-   99 00 02    STA   $0200,Y
+05E3-   C8          INY   
+05E4-   D0 F7       BNE   $05DD
+05E6-   EE DF 05    INC   $05DF
+05E9-   EE E2 05    INC   $05E2
+05EC-   AD E2 05    LDA   $05E2
+05EF-   C9 04       CMP   #$04
+05F1-   90 EA       BCC   $05DD
+
+Now we are going to reuse this loop. The first time this loop executes it will
+terminate when the accumulator is $04.
+
+05F3-   C9 20       CMP   #$20
+05F5-   F0 1B       BEQ   $0612
+05F7-   D0 0D       BNE   $0606
+
+Execution will continue from $0606.
+
+0606-   A9 0A       LDA   #$0A
+0608-   8D E2 05    STA   $05E2
+060B-   A9 20       LDA   #$20
+060D-   8D F0 05    STA   $05F0
+0610-   D0 CB       BNE   $05DD
+
+This updates the loop, and executes it again. Due to the self modifying nature
+of the code, when it starts execution a second time, it looks like this:
+
+05DD-   B9 00 89    LDA   $8B00,Y
+05E0-   99 00 02    STA   $0A00,Y
+05E3-   C8          INY   
+05E4-   D0 F7       BNE   $05DD
+05E6-   EE DF 05    INC   $05DF
+05E9-   EE E2 05    INC   $05E2
+05EC-   AD E2 05    LDA   $05E2
+05EF-   C9 04       CMP   #$20
+05F1-   90 EA       BCC   $05DD
+
+When the loop terminates a second time, the comparison at $05F3 will succeed,
+and execution will continue from $0612.
+
+; Store #$63 at $38
+0612-   A9 DE       LDA   #$DE
+0614-   65 48       ADC   $48
+0616-   85 3B       STA   $3B
+
+; Play the intro sequence
+0618-   20 00 82    JSR   $8200
+; Start the game
+061B-   4C BC FE    JMP   $FEBC
+
+FEBC-   6C 3A 00    JMP   ($003A)
+
+The entry point of the main game is at $6300. But the load obfuscates this by
+splitting up the stores to $3A and $3B and jumping to ROM code that uses those
+locations for an indirect jump.
+
+Looking back, the easiest way to capture the game image is to interrupt
+execution at $05D9 and save memory at $4000.$A0FF.
+
+[enter the debugger and reboot the emulator]
+>G 5D9
+>BSAVE "GAME#064000",4000:A0FF
+
+I use a 64k Diversi 4.1C work disk since that makes it easier to work with the
+game image loaded into memory at $4000. But that is not strictly necessary.
+Loading the game image into a lower address, such as $2000, and using 48k DOS
+3.3 would work equally well.
+
+Now that we have the game code and data, what to do with it? Well, what I wanted
+was the original game experience, disk boot and all, but in an emulator friendly
+140k 16-sector DOS ordered disk image. This is why other cracks didn't meet my
+goals. The ideal game start experience is:
+  1. Boot the disk.
+  2. Start the bootstrap loader.
+  3. Clear and display the hi-res screen.
+  4. Load the game into memory.
+  5. Relocate and start the game.
+
+A side effect of the Raster Blaster game disk storage as whole tracks of $800
+bytes is that it loads significantly faster than DOS 3.3 since there aren't
+individual sectors and the only rotational delay is finding the track start.
+Ideally the bootstrap loader used in step 2 is equally fast, as well as being
+adaptable enough for me to put in step 3.
+
+There is such a loader. It's qboot by qkumba.
+
+https://github.com/peterferrie/qboot
+
+I won't do a detailed write up on qboot and how it works. Using it is fairly
+straight forward, and you don't need to know it works in order to use it a basic
+way. For the curious, 4am has various versions of a good write up of it. He used
+customised versions of qboot as the boot loader for his cracks of Eggs-It and
+Gumball.
+
+https://ia600908.us.archive.org/8/items/EggsIt4amCrack/Eggs-It%20%284am%20crack%29.txt
+
+https://ia800402.us.archive.org/34/items/Gumball4amCrack/Gumball%20%284am%20%26%20san%20inc%20crack%29.txt
+
+But I will cover off a couple of minor things about qboot that aren't as well
+documented.
+
+The first is how you get qboot on to disk after you have assembled it.
+
+Qboot is a 16-sector disk loader. The first thing that a 16-sector disk
+controller does, is load track 0, sector 0 to $0800. The value at $0800 is value
+telling the controller ROM code how many sectors to load. That includes the
+sector just loaded at $0800. Most boot loaders will have the value $01 meaning
+load no more sectors. This is also true of qboot. Most boot loaders will then
+reuse a section of the disk controller boot ROM as a subroutine to load more
+sectors, but according to a scheme defined by the boot loader. Again, qboot is
+no exception.
+
+But different boot loaders define different schemes for loading sectors into
+memory.
+
+After sector 0 is loaded into page $0800, qboot will load sectors 2 and 4 into
+$BE00.$BFFF. Sectors 1 and 3 are skipped so that while the disk continues to
+rotate, qboot has enough time to set up the call to the subroutine in the disk
+controller ROM. There isn't enough time to do that without the interleave.
+
+But those are physical sectors $02 and $04. DOS 3.3 has a logical sector skew.
+Those physical sectors equate to DOS 3.3 sectors $0E and $0D respectively.
+Therefore, in order to be able to write qboot to physical sectors $00, $02, and
+$04 with DOS 3.3 RWTS, we call it telling it to write to sectors $00, $0E and
+$0D.
+
+The program write_qboot.s does this by looping the physical sector from $00 to
+$04 in increments of $02 and then translating to the DOS 3.3 logical sector so
+that RWTS can translate back to physical sector.
+
+We're going to store the game from track 1, sector 0 onwards, and it will load
+into memory starting from $4000, just like the original. The original boot
+loader relocates the game itself. There is enough room to do that in qboot, but
+we'll do something a little simpler. We'll create new entry code, in entry.s and
+loaded at $A100 right after the real game code, that performs the relocation and
+then jumps to the real entry points.
+
+With the game code, and a new entry point that performs the relocation, we have
+enough that we can write the game to disk and have it boot and run. But we're
+going to go one better.
+
+The code that is relocated to $0200.$03FF is a pair of routines that are called
+at various other points in the game code. I'm not sure what they're for, but I
+suspect they're used for sound effects. Relocating to $0200.$03FF is a devious
+trick. It trashes the page 3 vectors, including DOS vectors and the reset
+vector. It makes it impossible to use the the standard input without overwriting
+game code. We would have more flexibility if the game didn't run in these two
+lower memory pages. Can we patch the game so that the code can run without
+relocating $8900.$8AFF to $0200.$03FF.
+
+The Applewin debugger has a reasonable hex search function with wild carding. If
+I halt the virtual computer after it has relocated the code, but before it
+executes the game, I can search for references to pages $0200 and $0300. For
+example, to search for a jump to subroutine anywhere in the range $0200.$02FF, I
+use the following command:
+
+sh 0a00:88ff 20 ? 02
+
+That was done for both pages for different likely instructions: jump, jump
+subroutine, load absolute, store absolute, load absolute indexed, and so on.
+This produced a list of candidate locations that were then visually inspected
+for false positives. Finally a visual inspection of the unrelocated code at
+$8900.$8AFF is made to find any internal patches that need to be made.
+
+With this patch list in hand, everything is now ready to write the program,
+write_game.s. It patches the game code that is in memory at $4000.$A0FF, and
+then writes it and the relocator entry routine at $A100.$A1FF to disk for qboot
+to load and run.
+
+Well, almost. There is another trick that we could do.  The qboot source
+repository has a couple of files that are vestigial and sort of forgotten. These
+support the DOS 3.3 Launcher.
+
+http://apple2.org.za/gswv/a2zine/System/DOS33Launch.zip
+
+DOS 3.3 launcher was an odd thing that allowed ProDOS 8 and GS/OS to boot files
+that were DOS 3.3 disk images, and then cleanly return to the ProDOS launch
+environment. DOS 3.3 Launcher is no longer supported in qboot now that ProRWTS
+better addresses the reasons that qboot supported DOS 3.3 Launcher in the first
+place.
+
+Still. Might learn something and it might be fun to play with.
+
+To understand how qboot works with DOS 3.3 Launcher, it helps to understand what
+DOS 3.3 Launcher does, how DOS 3.3 is put together, and how DOS 3.3 Launcher
+works with that.
+
+DOS 3.3 Launcher is a ProDOS 8 or GS/OS suite of programs that images a 140k DOS
+3.3 disk onto a ProDOS file system, and then executes the image in such a way
+that it acts like a real DOS 3.3 disk booting. DOS 3.3 Launcher patches the
+image of DOS 3.3 such that RWTS calls are intercepted and implemented as file
+access to the disk image, instead of real disk and controller hardware. DOS 3.3
+Launcher also hooks the reset vector on page 3 so that when Ctrl-Reset is
+pressed in the virtual DOS 3.3 session, it is cleanly quit in standard ProDOS or
+GS/OS fashion.
+
+Note that in order to quit cleanly, DOS 3.3 Launcher relies on the page 3
+vectors not being corrupted.  Supporting DOS 3.3 Launcher was the reason for
+patching Raster Blaster to not use $0200.$03FF.
+
+Next, how DOS 3.3 Launcher does this, intermingled with some background on DOS
+3.3. Actually, this is mostly supposition about what DOS 3.3 Launcher is likely
+to be doing based on DOS 3.3 and how qboot was coded to support DOS 3.3
+Launcher. The detail of what DOS 3.3 does will be skimmed over. Refer to Beneath
+Apple DOS by Worth and Lechner for more detail.
+
+When DOS 3.3 boots, the first byte of track 0, sector 0 tells the disk
+controller boot ROM to only load that sector in memory starting at $0800. Then
+the controller ROM jumps to $0801 which starts the next step of the bootstrap.
+The reason this happens is that the boot ROM has no understanding of DOS 3.3
+logical sector skew, and the next stage bootloader is stored in logical sectors
+$01 through to $09. The sector 0 bootloader loops from 0 to 9, and contains a
+logical to physical sector translation table used before calling a portion of
+the disk controller ROM as a sector read subroutine. Note that the The sector 0
+bootloader is also loading itself in again at a different address before
+continuing the loop and loading the rest of the next stage bootloader.
+
+The sector 0 boot loader code does not have the number of sectors to load built
+into it. Nor does it have the load address of the next boot load built in. Both
+values are stored in sector 0, but are stored as initialised data in the top two
+bytes. When the sector 0 bootloader is loaded into ram, the page to start
+loading the next stage into is stored at $08FE, and the last logical sector to
+load is stored at $08FF. It's important to know this, because DOS 3.3 Launcher
+uses this fact.
+
+The DOS 3.3 sector 0 bootloader loop that load the next boot stage is quite
+short. Directly after it, at $0839, is the code that passes control to it. We'll
+come back to this because it's another fact that DOS 3.3 Launcher relies on.
+
+There is one last aspect of DOS 3.3 that we have to cover. When DOS 3.3 is fully
+loaded and relocated into RAM on an Apple II with at least 48k of RAM, it
+occupies the memory $9D00.$BFFF. That doesn't include any buffers that DOS 3.3
+may create just below that memory. DOS 3.3 has a layered architecture. The
+lowest layer is RWTS, which completely abstracts physical disk access away from
+the rest of DOS 3.3. RWTS occupies $B800.$BF00. The main entry is at $BD00.
+
+Note, if you're used to using $03D9 in the page 3 vectors to call DOS 3.3 RWTS,
+you may know that this points to $B7B5 which is outside $B800.$BF00. This is a
+DOS 3.3 file manager routine that disables interrupts before calling the main
+RWTS entry. Interrupts can be assumed to be disabled while a disk, virtual or
+real, is booting. In this case it would be safe to call $BD00 directly.
+
+When DOS 3.3 Launcher starts DOS 3.3 from a virtual disk image, it has to
+isolate DOS 3.3 completely from any attempt to access physical hardware and
+redirect access to the virtual disk in a file. To do that it:
+  1. Reads in the first sector from the file to $0800.$08FF.
+  2. Examines the bytes at $08FE.$08FF and uses them to determine which sectors
+     to load, and where to load them. This is done to avoid executing code at
+     $0801.$0838 that will attempt to use ROM on the physical disk controller.
+  3. Assuming it has just read in an RWTS in DOS 3.3 configured for 48k RAM 
+     that will attempt to access physical hardware, it overwrites $BD00.$BEFF
+     with its RWTS that redirects access to the virtual disk image that was
+     booted.
+  4. Passes control to $0839 which then starts the next stage bootloader that
+     now makes use of the substitute RWTS that is reading from the disk image
+     file.
+
+Of course, the virtual disk image doesn't have actually to be DOS 3.3. It just
+has to conform to the minimal specifications, described above, that DOS 3.3
+Launcher expects. And qboot does this.
+
+In qboot.s is this code:
+
+*=$8fe
+        !byte   $be, 1
+
+It's at the end of physical sector 0, which is loaded into $0800.08FF. It's not
+used by any qboot code. It's there so that DOS 3.3 Launcher will find it and
+load DOS 3.3 logical sectors 0 through to 1, to $BE00.$BFFF. Logical sector 0 is
+the same as physical sector 0, so $BE00.BEFF is a duplicate of $0800.$08FF.
+That's good. It means it won't matter when $BE00.BEFF gets overwritten later.
+You'll note that we have yet to write anything to DOS 3.3 logical sector 1 of
+our cracked Raster Blaster disk. That's coming later. 
+
+DOS 3.3 Launcher now copies it's own substitute RWTS into $BD00.$BEFF. Of course
+it overwrites the duplicate of sector 0 but, as stated earlier, that doesn't
+matter.
+
+Back to qboot. Another section of the code is:
+
+*=$839
+        lda     #>(entry-1)
+        pha
+        lda     #<(entry-1)
+        pha
+        jsr     preread
+        jmp     $bf00           ;DOS 3.3 launcher entrypoint
+
+Again, this isn't referenced from anywhere else in qboot. It's there solely so
+that it can be called by DOS 3.3 Launcher. The jump to $BF00 is a jump to code
+that we'll get to soon that makes use of the substitute RWTS to load the Raster
+Blaster game from disk.
+
+This is, in effect, an alternate DOS 3.3 Launcher compatible bootloader
+interleaved with the actual qboot bootloader that works with physical hardware.
+
+Let's ignore the call to preread for the moment. It is important, and we're
+going to get back to it.
+
+The code that is written to DOS 3.3 logical sector 1 is dos33l.s. It uses the
+starting track, starting sector, number of sectors, and load address to load the
+game just as the main qboot code. The difference is that qboot reads sectors in
+physical sector order relying that write_game.s has written the sectors in this
+order. Therefore the code in dos33l.s has to loop over sectors in physical
+order, but use a DOS 3.3 logical skew translation table before calling the RWTS
+routine at $BD00.
+
+But back to the those parameters that qboot and the dos33l.s use, which are set
+but the call to the subroutine preread. The parameters for load address, sector
+count, and first sector are passed in the accumulator, X index, and Y index
+respectively. The track needs to be passed in some other way. The preread
+subroutine multiplies the track by two and directly modifies the memory location
+of the instruction operand that it expects to be initialising the start phase.
+
+This works perfectly for the code in qboot. The code in dos33l.s uses a bit of
+trickery to line up with the memory location that preread is going to write
+into. Specifically, it does this:
+
+        bcc     +
+        !byte   $d1
+phase   !byte   $d1 ;set by bootsector if qboot loaded to $be00
++       dec     sectors
+
+With that, we use write_qboot.s write dos33l.s to DOS 3.3 logical sector 1. That
+done, we can install DOS 3.3 Launcher onto GS/OS 6.0.4 and use its disk copier
+utility to make a disk image from from our cracked copy of Raster Blaster. It
+launches, the game runs, and Ctrl-Reset neatly returns us to the desktop. Our
+work is done here.
+
+
+
+Exercises for the Reader
+
+1. The post-nibble processing routine at $0346 looks like it might have a
+way to combine 5+3 nibbles into bytes that is different to standard DOS 3.2.
+Complete the analysis.
+
+2. Given that the phase table at $061E can be altered, and the seek routine can
+seek backwards as well as forwards, this protection code looks general purpose.
+But how general purpose is it? The decryption routine at $0501 is not properly
+analysed. Complete the analysis and determine if it can be parameterised such
+that a value other than $84 drops out the end and is stored in $48.
+
+3. This crack patches Raster Blaster so that it doesn't overwrite the page 3
+vectors, or get overwritten by keyboard entry. That's new. Create a single load
+DOS 3.3 binary version of the game that reacts better to Ctrl-Reset. Use the
+following single file crack of Raster Blaster as a guide:
+
+https://archive.org/details/a2_Raster_Blaster_1981_BudgeCo
+
+4. Do the same for a ProDOS single load system program that uses the reset
+vector in page 3 to execute a QUIT system call. For bonus credit, create a self
+decrypting file in the same way that the following crack does:
+
+https://ftp.apple.asimov.net/images/games/collections/san_inc_prodos/raster%20blaster%2013k%20file%20PRODOS%20%28san%20inc%20crack%29.dsk
+
+5. Validate that the crack is possible with period correct hardware and tools
+only. Create boot trace code that stops execution at all necessary points to
+capture the code and important register and memory values.
+
