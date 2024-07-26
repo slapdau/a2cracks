@@ -697,7 +697,9 @@ routine at $062C.
 ; Going backwards.
 0649-   69 FE       ADC   #$FE
 064B-   C6 53       DEC   $53
-; And ... ? Calculate momentum delay?
+; Accumulator contains abs(phases remaining)-1
+; Find minimum of (phases moved, phases remaining -1, 8).
+; Stored in Y and used as index into phase on/off delay lookup tables.
 064D-   C5 55       CMP   $55
 064F-   90 02       BCC   $0653
 0651-   A5 55       LDA   $55
@@ -715,7 +717,7 @@ routine at $062C.
 0665-   20 78 06    JSR   $0678
 0668-   B9 9D 06    LDA   $069D,Y
 066B-   20 84 06    JSR   $0684
-; Increase momentum
+; Increment number of phases moved.
 066E-   E6 55       INC   $55
 0670-   D0 C6       BNE   $0638     ; Branch always
 ; Destination phase reached. Delay and
@@ -737,20 +739,25 @@ routine at $062C.
 Because the stepper arm is a physical device and has inertia, every time it is
 stepped, the computer has to wait while it moves. The more phases that the arm
 has moved across, the faster it is moving and the shorter the delay has to be
-between phase steps. The delay routine at $0684 uses the value in the
+between phase steps. However, the closer to the destination phase the slower
+the arm should move since momentum will make it impossible to come to an
+instantaneous dead stop.
+
+The delay routine at $0684 uses the value in the
 accumulator to determine the length of the delay. It's called from $065F and
 $066B. Before the call is made, a value is read from one of the two tables at
 $0695 or $069D.
 
-; Table referenced at $065C
+; Phase-on delay lookup table.
 0695- 01 30 28
 0698- 24 20 1E 1D 1C
 
-; Table referenced $0668
+; Phase-off delay lookup table
 069D- 70 2C 26
 06A0- 22 1F 1E 1D 1C
 
-; Delay routine for arm seek
+; Delay routine for arm seek. Accumulator has number of 100us second intervals.
+; Note $00 is treated as 256.
 0684-   A2 11       LDX   #$11
 0686-   CA          DEX   
 0687-   D0 FD       BNE   $0686
