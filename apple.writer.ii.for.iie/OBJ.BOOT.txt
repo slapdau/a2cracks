@@ -1,0 +1,405 @@
+                             //
+                             // Boot 
+                             // RAM:1c00-RAM:1ec1
+                             //
+                             Initialise stack.
+        1c00 a2 ff           LDX        #0xff
+        1c02 9a              TXS
+        1c03 20 58 fc        JSR        HOME
+                             **************************************************************
+                             * Determine which object file to load next                   *
+                             **************************************************************
+        1c06 ad 0a fb        LDA        offset BOOT_TITLE                                = ??
+        1c09 c9 f0           CMP        #CHAR_p
+        1c0b d0 3a           BNE        obj_set
+        1c0d ce 3d 1d        DEC        IS_IIE
+        1c10 a9 c5           LDA        #CHAR_E
+        1c12 8d d9 1d        STA        s_D,A$2300_1dc7+18                               = "D,A$2300\r",00h
+        1c15 8d 01 c0        STA        80STORE
+        1c18 8d 55 c0        STA        PAGE2ON
+        1c1b a9 a5           LDA        #0xa5
+        1c1d 8d ff 07        STA        DAT_07ff
+        1c20 4d ff 07        EOR        DAT_07ff
+        1c23 d0 22           BNE        obj_set
+        1c25 a9 5a           LDA        #0x5a
+        1c27 8d ff 07        STA        DAT_07ff
+        1c2a 4d ff 07        EOR        DAT_07ff
+        1c2d d0 18           BNE        obj_set
+        1c2f a9 c0           LDA        #0xc0
+        1c31 8d 3e 1d        STA        CAPABILITIES
+        1c34 a9 a5           LDA        #0xa5
+        1c36 20 3f 1d        JSR        TEST_AUX_RAM                                     bool TEST_AUX_RAM(char testValue)
+        1c39 b0 0c           BCS        obj_set
+        1c3b a9 5a           LDA        #0x5a
+        1c3d 20 3f 1d        JSR        TEST_AUX_RAM                                     bool TEST_AUX_RAM(char testValue)
+        1c40 b0 05           BCS        obj_set
+        1c42 a9 c6           LDA        #CHAR_F
+        1c44 8d d9 1d        STA        s_D,A$2300_1dc7+18                               = "D,A$2300\r",00h
+                             obj_set                                         XREF[5]:     1c0b(j), 1c23(j), 1c2d(j), 
+                                                                                          1c39(j), 1c40(j)  
+        1c47 8d 0c c0        STA        80COLOFF
+        1c4a 8d 54 c0        STA        PAGE2OFF
+                             **************************************************************
+                             * Load next oject file at $2300                              *
+                             **************************************************************
+        1c4d 20 ea 1d        JSR        INIT_STUFF                                       void INIT_STUFF(void)
+        1c50 20 b9 1d        JSR        LOAD_NEXT_OBJ
+                             **************************************************************
+                             * Test for language card                                     *
+                             **************************************************************
+        1c53 ad 83 c0        LDA        RAMRWB2
+        1c56 ad 83 c0        LDA        RAMRWB2
+        1c59 a9 a5           LDA        #0xa5
+        1c5b 8d 00 d0        STA        DAT_d000
+        1c5e 4d 00 d0        EOR        DAT_d000
+        1c61 d0 03           BNE        no_lang_card
+        1c63 ce 3c 1d        DEC        HAS_LANG_CARD
+                             **************************************************************
+                             * Zero out some locations.                                   *
+                             **************************************************************
+                             no_lang_card                                    XREF[1]:     1c61(j)  
+        1c66 a0 00           LDY        #0x0
+        1c68 8c 80 02        STY        DAT_0280
+        1c6b 8c 00 1b        STY        DAT_1b00
+        1c6e 8c 80 17        STY        DAT_1780
+        1c71 8c c0 17        STY        DAT_17c0
+        1c74 8c 00 18        STY        DAT_1800
+        1c77 8c 40 18        STY        DAT_1840
+                             **************************************************************
+                             * Clear $0800-$0BFF to $8D                                   *
+                             **************************************************************
+        1c7a 84 00           STY        DAT_0000
+        1c7c a9 08           LDA        #0x8
+        1c7e 85 01           STA        DAT_0001                                         = ??
+        1c80 a2 04           LDX        #0x4
+        1c82 a9 8d           LDA        #0x8d
+        1c84 8d 80 1a        STA        DAT_1a80
+                             next_8d_byte                                    XREF[2]:     1c8a(j), 1c8f(j)  
+        1c87 91 00           STA        (0x0),Y
+        1c89 c8              INY
+        1c8a d0 fb           BNE        next_8d_byte
+        1c8c e6 01           INC        DAT_0001                                         = ??
+        1c8e ca              DEX
+        1c8f d0 f6           BNE        next_8d_byte
+                             **************************************************************
+                             * Zero out top half of zero page, and the bottom half of     *
+                             * page 3, except for $00B9-$00BD which are preserved.        *
+                             **************************************************************
+        1c91 a0 04           LDY        #0x4
+                             next_save_zp                                    XREF[1]:     1c9a(j)  
+        1c93 b9 b9 00        LDA        0xb9,Y=>DAT_00bd                                 = ??
+        1c96 99 f0 02        STA        0x2f0,Y=>DAT_02f4
+        1c99 88              DEY
+        1c9a 10 f7           BPL        next_save_zp
+        1c9c a0 00           LDY        #0x0
+        1c9e 98              TYA
+                             next_zero                                       XREF[1]:     1ca6(j)  
+        1c9f 99 80 00        STA        0x80,Y
+        1ca2 99 00 03        STA        SUB_0300,Y
+        1ca5 c8              INY
+        1ca6 10 f7           BPL        next_zero
+        1ca8 a0 04           LDY        #0x4
+                             next_restore_zp                                 XREF[1]:     1cb1(j)  
+        1caa b9 f0 02        LDA        0x2f0,Y=>DAT_02f4
+        1cad 99 b9 00        STA        0xb9,Y=>DAT_00bd                                 = ??
+        1cb0 88              DEY
+        1cb1 10 f7           BPL        next_restore_zp
+                             **************************************************************
+                             * Set Reset, Break and IRQ vectors to restart application.   *
+                             **************************************************************
+        1cb3 a9 03           LDA        #0x3
+        1cb5 8d f0 03        STA        DAT_03f0
+        1cb8 8d f2 03        STA        DAT_03f2
+        1cbb 8d fe 03        STA        DAT_03fe
+        1cbe a9 23           LDA        #0x23
+        1cc0 8d f1 03        STA        DAT_03f1
+        1cc3 8d f3 03        STA        DAT_03f3
+        1cc6 8d f6 03        STA        DAT_03f6
+        1cc9 8d ff 03        STA        DAT_03ff
+        1ccc 49 a5           EOR        #0xa5
+        1cce 8d f4 03        STA        DAT_03f4
+        1cd1 a9 06           LDA        #0x6
+        1cd3 8d f5 03        STA        DAT_03f5
+                             **************************************************************
+                             * Initialse some application variables.                      *
+                             **************************************************************
+        1cd6 20 ea 1d        JSR        INIT_STUFF                                       void INIT_STUFF(void)
+        1cd9 a9 ff           LDA        #0xff
+        1cdb 85 a6           STA        DAT_00a6                                         = ??
+        1cdd ad 3e 1d        LDA        CAPABILITIES
+        1ce0 85 b3           STA        Capabilities_00b3
+                             **************************************************************
+                             * Set memory sizes?                                          *
+                             **************************************************************
+        1ce2 a9 99           LDA        #0x99
+        1ce4 2c 3c 1d        BIT        HAS_LANG_CARD
+        1ce7 10 02           BPL        no_lang_card
+        1ce9 a9 be           LDA        #0xbe
+                             no_lang_card                                    XREF[1]:     1ce7(j)  
+        1ceb 85 a7           STA        DAT_00a7                                         = ??
+        1ced a9 53           LDA        #0x53
+        1cef ac d9 1d        LDY        s_D,A$2300_1dc7+18                               = "D,A$2300\r",00h
+        1cf2 c0 c6           CPY        #CHAR_F
+        1cf4 d0 02           BNE        no_aux_ram
+        1cf6 a9 08           LDA        #0x8
+                             no_aux_ram                                      XREF[1]:     1cf4(j)  
+        1cf8 85 b2           STA        DAT_00b2                                         = ??
+                             **************************************************************
+                             * Check for Sup'r'Terminal 80 column card if not a IIe       *
+                             **************************************************************
+        1cfa 2c 3d 1d        BIT        IS_IIE
+        1cfd 30 1f           BMI        check_corvus
+        1cff ad ff cf        LDA        CLRROM
+        1d02 ad 00 c3        LDA        SUB_c300                                         Enable card expansion ROM
+        1d05 a2 02           LDX        #0x2
+                             check_next_sig_byte                             XREF[1]:     1d10(j)  
+        1d07 bd 39 1d        LDA        SUPRTERM_SIG,X
+        1d0a dd 01 cb        CMP        DAT_cb01,X
+        1d0d d0 0f           BNE        check_corvus
+        1d0f ca              DEX
+        1d10 10 f5           BPL        check_next_sig_byte
+        1d12 a9 c0           LDA        #0xc0
+        1d14 85 b3           STA        Capabilities_00b3
+        1d16 20 00 c3        JSR        SUB_c300                                         Initialise card
+        1d19 a9 8c           LDA        #CTRL-L                                          Clear and home
+        1d1b 20 ed fd        JSR        COUT                                             void COUT(char output)
+                             **************************************************************
+                             * Look for a Corvus drive.                                   *
+                             **************************************************************
+                             check_corvus                                    XREF[2]:     1cfd(j), 1d0d(j)  
+        1d1e 20 f5 1d        JSR        CHECK_CORVUS                                     undefined CHECK_CORVUS(void)
+                             **************************************************************
+                             * Set the screen width                                       *
+                             **************************************************************
+        1d21 a9 50           LDA        #80
+        1d23 24 b3           BIT        Capabilities_00b3
+        1d25 30 01           BMI        has_80_col
+        1d27 4a              LSR        A
+                             has_80_col                                      XREF[1]:     1d25(j)  
+        1d28 85 b6           STA        SCREEN_WIDTH                                     = ??
+                             **************************************************************
+                             * Check for lowercase if not a IIe or already found          *
+                             **************************************************************
+        1d2a 2c 3d 1d        BIT        IS_IIE
+        1d2d 30 07           BMI        go_start
+        1d2f 24 b3           BIT        Capabilities_00b3
+        1d31 30 03           BMI        go_start
+        1d33 20 73 1d        JSR        CHECK_FOR_LOWER                                  undefined CHECK_FOR_LOWER()
+                             **************************************************************
+                             * Start the application                                      *
+                             **************************************************************
+                             go_start                                        XREF[2]:     1d2d(j), 1d31(j)  
+        1d36 4c 00 23        JMP        START
+                             SUPRTERM_SIG                                    XREF[1]:     1d07(R)  
+        1d39 58 ff 70        db[3]
+                             HAS_LANG_CARD                                   XREF[2]:     1c63(RW), 1ce4(R)  
+        1d3c 00              db         0h
+                             IS_IIE                                          XREF[3]:     1c0d(RW), 1cfa(R), 1d2a(R)  
+        1d3d 00              db         0h
+                             CAPABILITIES                                    XREF[2]:     1c31(W), 1cdd(R)  
+        1d3e 00              Capabili
+                             **************************************************************
+                             *                          FUNCTION                          *
+                             **************************************************************
+                             bool TEST_AUX_RAM(char testValue)
+             bool              C:1            <RETURN>
+             char              A:1            testValue
+                             TEST_AUX_RAM                                    XREF[2]:     1c36(c), 1c3d(c)  
+        1d3f 48              PHA
+        1d40 a0 40           LDY        #0x40
+                             copy_next                                       XREF[1]:     1d49(j)  
+        1d42 b9 4f 1d        LDA        aux_test_code,Y
+        1d45 99 00 01        STA        0x100,Y=>DAT_0140                                = ??
+        1d48 88              DEY
+        1d49 10 f7           BPL        copy_next
+        1d4b 68              PLA
+        1d4c 4c 00 01        JMP        LAB_0100
+                             aux_test_code                                   XREF[1]:     TEST_AUX_RAM:1d42(R)  
+        1d4f 8d 05 c0        STA        RAMWRTON
+        1d52 8d 03 c0        STA        RAMRDON
+        1d55 8d 00 08        STA        DAT_0800
+        1d58 cd 00 0c        CMP        DAT_0c00
+        1d5b d0 0e           BNE        aux_good
+        1d5d 0e 00 0c        ASL        DAT_0c00
+        1d60 ad 00 08        LDA        DAT_0800
+        1d63 cd 00 0c        CMP        DAT_0c00
+        1d66 d0 03           BNE        aux_good
+        1d68 38              SEC
+        1d69 b0 01           BCS        return
+                             aux_good                                        XREF[2]:     1d5b(j), 1d66(j)  
+        1d6b 18              CLC
+                             return                                          XREF[1]:     1d69(j)  
+        1d6c 8d 04 c0        STA        RAMWRTOFF
+        1d6f 8d 02 c0        STA        RAMRDOFF
+        1d72 60              RTS
+                             **************************************************************
+                             *                          FUNCTION                          *
+                             **************************************************************
+                             undefined CHECK_FOR_LOWER()
+             undefined         A:1            <RETURN>
+                             CHECK_FOR_LOWER                                 XREF[1]:     1d33(c)  
+        1d73 a0 00           LDY        #0x0
+                             next_char                                       XREF[1]:     1d7e(j)  
+        1d75 b9 92 1d        LDA        s_LOWER_CASE,Y                                   = "\a\r\rDO YOU HAVE LOWERCASE D
+        1d78 20 ed fd        JSR        COUT                                             void COUT(char output)
+        1d7b c8              INY
+        1d7c c9 ba           CMP        #0xba
+        1d7e d0 f5           BNE        next_char
+        1d80 20 6f fd        JSR        GETLN1
+        1d83 ad 00 02        LDA        DAT_0200
+        1d86 20 e3 1d        JSR        TO_UPPER                                         char TO_UPPER(char character)
+        1d89 c9 d9           CMP        #CHAR_Y
+        1d8b d0 04           BNE        exit
+        1d8d a9 40           LDA        #0x40
+        1d8f 85 b3           STA        Capabilities_00b3
+                             exit                                            XREF[1]:     1d8b(j)  
+        1d91 60              RTS
+                             s_LOWER_CASE                                    XREF[1]:     CHECK_FOR_LOWER:1d75(R)  
+        1d92 87 8d 8d        ds         "\a\r\rDO YOU HAVE LOWERCASE DISPLAY (Y/N):"
+             c4 cf a0 
+             d9 cf d5 
+                             **************************************************************
+                             *                         SUBROUTINE                         *
+                             **************************************************************
+                             LOAD_NEXT_OBJ                                   XREF[1]:     1c50(c)  
+        1db9 a0 00           LDY        #0x0
+                             next_char                                       XREF[1]:     1dc4(j)  
+        1dbb b9 c7 1d        LDA        s_NEXT_OBJ,Y                                     = "\r",84h,"BLOADOBJ.APWRT][D,A$
+        1dbe f0 06           BEQ        exit
+        1dc0 20 ed fd        JSR        COUT                                             void COUT(char output)
+        1dc3 c8              INY
+        1dc4 d0 f5           BNE        next_char
+                             exit                                            XREF[1]:     1dbe(j)  
+        1dc6 60              RTS
+                             s_D,A$2300_1dd9                                 XREF[1,3]:   1dbb(R), 1c12(W), 1c44(W), 
+                             s_NEXT_OBJ                                                   1cef(R)  
+        1dc7 8d 84 c2        ds         "\r",84h,"BLOADOBJ.APWRT][D,A$2300\r",00h
+             cc cf c1 
+             c4 cf c2 
+                             **************************************************************
+                             *                          FUNCTION                          *
+                             **************************************************************
+                             char __stdcall TO_UPPER(char character)
+             char              A:1            <RETURN>
+             char              A:1            character
+                             TO_UPPER                                        XREF[3]:     CHECK_FOR_LOWER:1d86(c), 
+                                                                                          CHECK_CORVUS:1df8(c), 
+                                                                                          CHECK_CORVUS:1e16(c)  
+        1de3 c9 e0           CMP        #0xe0
+        1de5 90 02           BCC        is_upper
+        1de7 e9 20           SBC        #0x20
+                             is_upper                                        XREF[1]:     1de5(j)  
+        1de9 60              RTS
+                             **************************************************************
+                             *                          FUNCTION                          *
+                             **************************************************************
+                             void INIT_STUFF(void)
+             void              <VOID>         <RETURN>
+                             INIT_STUFF                                      XREF[2]:     1c4d(c), 1cd6(c)  
+        1dea a9 ff           LDA        #0xff
+        1dec 85 33           STA        DAT_0033                                         = ??
+        1dee a9 80           LDA        #0x80
+        1df0 85 d9           STA        DAT_00d9                                         = ??
+        1df2 85 76           STA        DAT_0076                                         = ??
+        1df4 60              RTS
+                             **************************************************************
+                             *                          FUNCTION                          *
+                             **************************************************************
+                             undefined CHECK_CORVUS(void)
+             undefined         A:1            <RETURN>
+                             CHECK_CORVUS                                    XREF[1]:     1d1e(c)  
+        1df5 ad 00 c0        LDA        KBD
+        1df8 20 e3 1d        JSR        TO_UPPER                                         char TO_UPPER(char character)
+        1dfb c9 c3           CMP        #CHAR_ETX
+        1dfd f0 01           BEQ        check_requested
+        1dff 60              RTS
+                             check_requested                                 XREF[1]:     1dfd(j)  
+        1e00 8d 10 c0        STA        KBDSTRB
+        1e03 a0 00           LDY        #0x0
+                             next_char                                       XREF[1]:     1e0e(j)  
+        1e05 b9 8a 1e        LDA        s_ENABLE_CORVUS,Y                                = "\a\r\rENABLE CORVUS IN SLOT 6
+        1e08 f0 06           BEQ        last_char
+        1e0a 20 ed fd        JSR        COUT                                             void COUT(char output)
+        1e0d c8              INY
+        1e0e d0 f5           BNE        next_char
+                             last_char                                       XREF[1]:     1e08(j)  
+        1e10 20 6f fd        JSR        GETLN1
+        1e13 ad 00 02        LDA        DAT_0200
+        1e16 20 e3 1d        JSR        TO_UPPER                                         char TO_UPPER(char character)
+        1e19 c9 d9           CMP        #CHAR_Y
+        1e1b f0 01           BEQ        enable_corvus
+        1e1d 60              RTS
+                             enable_corvus                                   XREF[1]:     1e1b(j)  
+        1e1e a9 1c           LDA        #0x1c
+        1e20 8d 7e 06        STA        DAT_067e
+        1e23 a9 00           LDA        #0x0
+        1e25 8d fe 06        STA        DAT_06fe
+        1e28 a9 52           LDA        #0x52
+        1e2a 8d 7e 07        STA        DAT_077e
+        1e2d a9 0c           LDA        #0xc
+        1e2f 8d 7e 05        STA        DAT_057e
+        1e32 a9 00           LDA        #0x0
+        1e34 8d fe 05        STA        DAT_05fe
+        1e37 a9 01           LDA        #0x1
+        1e39 85 04           STA        DAT_0004                                         = ??
+        1e3b a9 09           LDA        #0x9
+        1e3d 85 06           STA        DAT_0006                                         = ??
+        1e3f a9 00           LDA        #0x0
+        1e41 85 07           STA        DAT_0007                                         = ??
+        1e43 a9 05           LDA        #0x5
+        1e45 85 08           STA        DAT_0008                                         = ??
+        1e47 a9 00           LDA        #0x0
+        1e49 85 09           STA        DAT_0009                                         = ??
+        1e4b 85 0a           STA        DAT_000a                                         = ??
+        1e4d a9 03           LDA        #0x3
+        1e4f 85 0b           STA        DAT_000b                                         = ??
+        1e51 ad d2 03        LDA        DAT_03d2
+        1e54 18              CLC
+        1e55 69 20           ADC        #0x20
+        1e57 8d 63 1e        STA        LAB_1e61+2
+        1e5a a0 00           LDY        #0x0
+                             LAB_1e5c                                        XREF[1]:     1e65(j)  
+        1e5c b9 bd 1e        LDA        DAT_1ebd,Y                                       = 4Ch
+        1e5f f0 06           BEQ        LAB_1e67
+                             LAB_1e61+2                                      XREF[0,1]:   1e57(W)  
+        1e61 99 00 bd        STA        0xbd00,Y
+        1e64 c8              INY
+        1e65 d0 f5           BNE        LAB_1e5c
+                             LAB_1e67                                        XREF[1]:     1e5f(j)  
+        1e67 2c 00 c6        BIT        DAT_c600
+        1e6a a0 0a           LDY        #0xa
+                             next_byte                                       XREF[1]:     1e73(j)  
+        1e6c b9 ad 1e        LDA        r_corvus_init_thunk,Y
+        1e6f 99 00 03        STA        0x300,Y=>DAT_030a
+        1e72 88              DEY
+        1e73 10 f7           BPL        next_byte
+        1e75 20 00 03        JSR        SUB_0300
+        1e78 ad 00 03        LDA        SUB_0300
+        1e7b 8d 7e 07        STA        DAT_077e
+        1e7e ad 01 03        LDA        DAT_0301
+        1e81 8d 7e 05        STA        DAT_057e
+        1e84 a9 01           LDA        #0x1
+        1e86 8d 7e 04        STA        DAT_047e
+        1e89 60              RTS
+                             s_ENABLE_CORVUS                                 XREF[1]:     CHECK_CORVUS:1e05(R)  
+        1e8a 87 8d 8d        ds         "\a\r\rENABLE CORVUS IN SLOT 6 (Y/N) ?",00h
+             c5 ce c1 
+             c2 cc c5 
+                             r_corvus_init_thunk                             XREF[1]:     CHECK_CORVUS:1e6c(R)  
+        1ead 68              PLA
+        1eae 85 02           STA        DAT_0002                                         = ??
+        1eb0 68              PLA
+        1eb1 85 03           STA        DAT_0003                                         = ??
+        1eb3 a2 00           LDX        #0x0
+        1eb5 4c 15 c8        JMP        LAB_c815
+        1eb8 00              ??         00h
+        1eb9 00              ??         00h
+        1eba 00              ??         00h
+        1ebb 00              ??         00h
+        1ebc 00              ??         00h
+                             DAT_1ebd                                        XREF[1]:     CHECK_CORVUS:1e5c(R)  
+        1ebd 4c              undefined1 4Ch
+        1ebe cf              ??         CFh
+        1ebf c6              ??         C6h
+        1ec0 ea              ??         EAh
+        1ec1 00              ??         00h
